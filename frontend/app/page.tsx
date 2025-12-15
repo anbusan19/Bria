@@ -1,13 +1,19 @@
+'use client';
+
+import { useState } from 'react';
 import ImageGenerator from "./components/ImageGenerator";
+import ImageEditor from "./components/ImageEditor";
 
 export default function Home() {
+  const [activeTab, setActiveTab] = useState<'generator' | 'editor'>('generator');
+
   return (
     <div className="min-h-screen bg-black text-white font-sans selection:bg-blue-500/30">
       <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none"></div>
       <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-black to-purple-900/20 pointer-events-none"></div>
 
       <main className="relative z-10 flex flex-col items-center justify-center min-h-screen p-8 sm:p-20">
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <h1 className="text-5xl sm:text-7xl font-extrabold tracking-tight mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 animate-gradient-x">
             Bria AI
           </h1>
@@ -17,7 +23,31 @@ export default function Home() {
           </p>
         </div>
 
-        <ImageGenerator />
+        {/* Navigation Tabs */}
+        <div className="flex space-x-4 mb-8 bg-white/5 p-1 rounded-xl border border-white/10 backdrop-blur-sm">
+          <button
+            onClick={() => setActiveTab('generator')}
+            className={`px-6 py-2 rounded-lg font-semibold transition-all ${activeTab === 'generator'
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
+          >
+            Generator
+          </button>
+          <button
+            onClick={() => setActiveTab('editor')}
+            className={`px-6 py-2 rounded-lg font-semibold transition-all ${activeTab === 'editor'
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/25'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
+          >
+            Editor
+          </button>
+        </div>
+
+        <div className="w-full animate-fadeIn">
+          {activeTab === 'generator' ? <ImageGenerator /> : <ImageEditor />}
+        </div>
 
         <footer className="mt-20 text-gray-600 text-sm">
           <p>Built with Next.js & Bria API</p>
@@ -26,3 +56,4 @@ export default function Home() {
     </div>
   );
 }
+
