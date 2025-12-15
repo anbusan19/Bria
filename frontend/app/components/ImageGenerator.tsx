@@ -39,12 +39,17 @@ export default function ImageGenerator() {
     const [prompt, setPrompt] = useState('');
     const [structuredPrompt, setStructuredPrompt] = useState(examplePrompt);
     const [aspectRatio, setAspectRatio] = useState('1:1');
-    const [modelVersion, setModelVersion] = useState('v2'); // 'v2' or '3.2'
-    const [v2Mode, setV2Mode] = useState<'structured' | 'text'>('structured');
+    const [modelVersion, setModelVersion] = useState('v2');
+    const [v2Mode, setV2Mode] = useState<'quick' | 'pro'>('quick');
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
     const [status, setStatus] = useState<string>('');
+
+    // Pro Builder States
+    const [referenceImage, setReferenceImage] = useState('');
+    const [seed, setSeed] = useState<number | ''>('');
+    const [proStep, setProStep] = useState<1 | 2 | 3>(1); // 1: Inspiration, 2: Blueprint, 3: Creation
 
     const validateJSON = (jsonString: string) => {
         try {
@@ -63,6 +68,109 @@ export default function ImageGenerator() {
         }
     };
 
+    const generateRecipe = async () => {
+        setLoading(true);
+        setError(null);
+        setStatus('Generating Recipe...');
+
+        try {
+            const payload: any = {};
+            if (prompt) payload.prompt = prompt;
+            if (referenceImage) payload.images = [referenceImage];
+
+            if (!prompt && !referenceImage) {
+                throw new Error("Please provide a text prompt or reference image URL.");
+            }
+
+            const res = await fetch('/api/generate-structured-prompt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.details || errData.error || 'Failed to generate recipe');
+            }
+
+            const data = await res.json();
+            console.log('Generate Recipe Response:', data);
+
+            if (res.status === 202 && data.status_url) {
+                setStatus('Generating Recipe (Async)...');
+                pollRecipe(data.status_url);
+                return;
+            }
+
+            let recipe;
+            if (data.result && data.result.structured_prompt) {
+                recipe = typeof data.result.structured_prompt === 'string'
+                    ? data.result.structured_prompt
+                    : JSON.stringify(data.result.structured_prompt, null, 2);
+            } else if (data.result) {
+                recipe = typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2);
+            } else {
+                recipe = JSON.stringify(data, null, 2);
+            }
+
+            console.log('Processed Recipe String:', recipe);
+            setStructuredPrompt(recipe);
+            setProStep(2);
+            setStatus('Recipe Generated');
+            setLoading(false);
+        } catch (err: any) {
+            setError(err.message);
+            setLoading(false);
+            setStatus('Error');
+        }
+    };
+
+    const pollRecipe = async (statusUrl: string) => {
+        const pollInterval = setInterval(async () => {
+            try {
+                const res = await fetch(`/api/poll-image?url=${encodeURIComponent(statusUrl)}`);
+                if (!res.ok) {
+                    clearInterval(pollInterval);
+                    throw new Error('Polling failed');
+                }
+                const data = await res.json();
+                console.log('Poll Recipe Data:', data);
+
+                if (data.status === 'COMPLETED') {
+                    clearInterval(pollInterval);
+
+                    let recipe;
+                    if (data.result && data.result.structured_prompt) {
+                        recipe = typeof data.result.structured_prompt === 'string'
+                            ? data.result.structured_prompt
+                            : JSON.stringify(data.result.structured_prompt, null, 2);
+                    } else if (data.result) {
+                        recipe = typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2);
+                    } else {
+                        recipe = JSON.stringify(data, null, 2);
+                    }
+
+                    setStructuredPrompt(recipe);
+                    setProStep(2);
+                    setStatus('Recipe Generated');
+                    setLoading(false);
+                } else if (data.status === 'FAILED') {
+                    clearInterval(pollInterval);
+                    setError('Recipe Generation Failed');
+                    setLoading(false);
+                    setStatus('Failed');
+                } else {
+                    setStatus(`Generating Recipe: ${data.status}`);
+                }
+            } catch (e: any) {
+                clearInterval(pollInterval);
+                setError(e.message);
+                setLoading(false);
+                setStatus('Error polling recipe');
+            }
+        }, 2000);
+    };
+
     const generateImage = async () => {
         setLoading(true);
         setError(null);
@@ -79,27 +187,40 @@ export default function ImageGenerator() {
                 payload.prompt = prompt;
             } else {
                 // V2
-                if (v2Mode === 'text') {
+                if (v2Mode === 'quick') {
                     if (!prompt) {
-                        setError("Prompt is required for Text Mode");
+                        setError("Prompt is required for Quick Mode");
                         setLoading(false);
                         return;
                     }
                     payload.prompt = prompt;
                 } else {
-                    // Structured Mode
-                    payload.prompt = prompt || "generate image";
+                    // Pro Mode
+                    if (proStep >= 2) {
+                        const validationError = validateJSON(structuredPrompt);
+                        if (validationError) {
+                            throw new Error(validationError);
+                        }
+                        try {
+                            payload.structured_prompt = JSON.parse(structuredPrompt);
+                        } catch (e) {
+                            throw new Error("Invalid JSON in Structured Prompt");
+                        }
 
-                    const validationError = validateJSON(structuredPrompt);
-                    if (validationError) {
-                        throw new Error(validationError);
+                        if (prompt && proStep === 3) {
+                            payload.prompt = prompt;
+                        }
+
+                        // Ensure reference image is passed if available
+                        if (referenceImage) {
+                            payload.images = [referenceImage];
+                        }
+                    } else {
+                        if (prompt) payload.prompt = prompt;
+                        if (referenceImage) payload.images = [referenceImage];
                     }
 
-                    try {
-                        payload.structured_prompt = JSON.parse(structuredPrompt);
-                    } catch (e) {
-                        throw new Error("Invalid JSON in Structured Prompt");
-                    }
+                    if (seed) payload.seed = Number(seed);
                 }
             }
 
@@ -117,17 +238,18 @@ export default function ImageGenerator() {
             const data = await res.json();
 
             if (res.status === 202 && data.status_url) {
-                // Poll for result
                 setStatus('Processing...');
                 pollStatus(data.status_url);
-            } else if (data.result_url || data.image_urls) {
+            } else if (data.result?.image_url || data.result_url || data.image_urls?.[0]) {
                 setResult(data);
                 setLoading(false);
                 setStatus('Completed');
+                if (v2Mode === 'pro') setProStep(3);
             } else {
                 setResult(data);
                 setLoading(false);
                 setStatus('Completed');
+                if (v2Mode === 'pro') setProStep(3);
             }
 
         } catch (err: any) {
@@ -152,13 +274,13 @@ export default function ImageGenerator() {
                     setResult(data);
                     setLoading(false);
                     setStatus('Completed');
+                    if (v2Mode === 'pro') setProStep(3);
                 } else if (data.status === 'FAILED') {
                     clearInterval(pollInterval);
                     setError('Generation Failed');
                     setLoading(false);
                     setStatus('Failed');
                 } else {
-                    // Still processing
                     setStatus(`Processing: ${data.status}`);
                 }
             } catch (e: any) {
@@ -171,135 +293,308 @@ export default function ImageGenerator() {
     };
 
     return (
-        <div className="w-full max-w-4xl mx-auto p-6 bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 shadow-xl">
-            <h2 className="text-2xl font-bold mb-6 text-white bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
-                Bria AI Image Generator
+        <div className="w-full max-w-6xl mx-auto p-6 bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 shadow-xl">
+            <h2 className="text-3xl font-bold mb-8 text-white bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                Bria AI Studio
             </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-1">Model Version</label>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                {/* Controls Section */}
+                <div className="lg:col-span-5 space-y-6">
+
+                    {/* Model & Mode Selection */}
+                    <div className="flex space-x-4 bg-black/20 p-2 rounded-lg">
                         <select
                             value={modelVersion}
                             onChange={(e) => setModelVersion(e.target.value)}
-                            className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="bg-transparent text-white font-semibold focus:outline-none w-1/2"
                         >
                             <option value="v2">V2 (FIBO)</option>
                             <option value="3.2">V1 (Base 3.2)</option>
                         </select>
-                    </div>
-
-                    {modelVersion === 'v2' && (
-                        <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1">Input Mode</label>
-                            <div className="flex space-x-4">
-                                <label className="flex items-center space-x-2 cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        checked={v2Mode === 'structured'}
-                                        onChange={() => setV2Mode('structured')}
-                                        className="text-blue-500 focus:ring-blue-500"
-                                    />
-                                    <span className="text-white text-sm">Structured (JSON)</span>
-                                </label>
-                                <label className="flex items-center space-x-2 cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        checked={v2Mode === 'text'}
-                                        onChange={() => setV2Mode('text')}
-                                        className="text-blue-500 focus:ring-blue-500"
-                                    />
-                                    <span className="text-white text-sm">Text Prompt</span>
-                                </label>
-                            </div>
-                        </div>
-                    )}
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-1">Aspect Ratio</label>
-                        <select
-                            value={aspectRatio}
-                            onChange={(e) => setAspectRatio(e.target.value)}
-                            className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                            <option value="1:1">1:1 (Square)</option>
-                            <option value="16:9">16:9 (Landscape)</option>
-                            <option value="9:16">9:16 (Portrait)</option>
-                            <option value="4:3">4:3</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-1">
-                            {modelVersion === 'v2' && v2Mode === 'structured' ? "Refinement Prompt (Optional)" : "Prompt"}
-                        </label>
-                        <textarea
-                            value={prompt}
-                            onChange={(e) => setPrompt(e.target.value)}
-                            placeholder={modelVersion === 'v2' && v2Mode === 'structured' ? "e.g., add sunlight" : "e.g., A professional headshot..."}
-                            rows={modelVersion === 'v2' && v2Mode === 'structured' ? 2 : 4}
-                            className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                    </div>
-
-                    {modelVersion === 'v2' && v2Mode === 'structured' && (
-                        <div>
-                            <div className="flex justify-between items-center mb-1">
-                                <label className="block text-sm font-medium text-gray-300">Structured Prompt (JSON)</label>
+                        {modelVersion === 'v2' && (
+                            <div className="flex space-x-2 w-1/2 justify-end">
                                 <button
-                                    onClick={() => setStructuredPrompt(examplePrompt)}
-                                    className="text-xs text-blue-400 hover:text-blue-300 underline"
+                                    onClick={() => setV2Mode('quick')}
+                                    className={`px-3 py-1 rounded-md text-sm transition-colors ${v2Mode === 'quick' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
                                 >
-                                    Load Example
+                                    Quick
+                                </button>
+                                <button
+                                    onClick={() => setV2Mode('pro')}
+                                    className={`px-3 py-1 rounded-md text-sm transition-colors ${v2Mode === 'pro' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                                >
+                                    Pro Builder
                                 </button>
                             </div>
-                            <textarea
-                                value={structuredPrompt}
-                                onChange={(e) => setStructuredPrompt(e.target.value)}
-                                rows={10}
-                                className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
+                        )}
+                    </div>
+
+                    {/* Quick Mode UI */}
+                    {v2Mode === 'quick' && (
+                        <div className="space-y-4 animate-fadeIn">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Prompt</label>
+                                <textarea
+                                    value={prompt}
+                                    onChange={(e) => setPrompt(e.target.value)}
+                                    placeholder="Describe your image..."
+                                    rows={4}
+                                    className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Aspect Ratio</label>
+                                <select
+                                    value={aspectRatio}
+                                    onChange={(e) => setAspectRatio(e.target.value)}
+                                    className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="1:1">1:1 (Square)</option>
+                                    <option value="16:9">16:9 (Landscape)</option>
+                                    <option value="9:16">9:16 (Portrait)</option>
+                                </select>
+                            </div>
+                            <button
+                                onClick={generateImage}
+                                disabled={loading}
+                                className="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold text-white transition-all shadow-lg shadow-blue-500/20"
+                            >
+                                {loading ? 'Generating...' : 'Generate Image'}
+                            </button>
                         </div>
                     )}
 
-                    <button
-                        onClick={generateImage}
-                        disabled={loading}
-                        className={`w-full py-3 rounded-lg font-semibold transition-all duration-200 ${loading
-                            ? 'bg-gray-600 cursor-not-allowed'
-                            : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 shadow-lg hover:shadow-blue-500/25'
-                            } text-white`}
-                    >
-                        {loading ? 'Generating...' : 'Generate Image'}
-                    </button>
+                    {/* Pro Builder UI */}
+                    {v2Mode === 'pro' && (
+                        <div className="space-y-6 animate-fadeIn">
+                            {/* Step Indicators */}
+                            <div className="flex justify-between text-xs font-mono text-gray-500 border-b border-white/10 pb-2">
+                                <span className={proStep >= 1 ? 'text-blue-400' : ''}>1. INSPIRATION</span>
+                                <span className={proStep >= 2 ? 'text-purple-400' : ''}>2. BLUEPRINT</span>
+                                <span className={proStep >= 3 ? 'text-green-400' : ''}>3. CREATION</span>
+                            </div>
 
-                    {status && <p className="text-sm text-gray-400 text-center">{status}</p>}
-                    {error && <p className="text-sm text-red-400 text-center">{error}</p>}
-                </div>
+                            {/* Step 1: Inspiration */}
+                            <div className={proStep === 1 ? 'block' : 'hidden'}>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-1">Inspiration Prompt</label>
+                                        <textarea
+                                            value={prompt}
+                                            onChange={(e) => setPrompt(e.target.value)}
+                                            placeholder="What do you want to create?"
+                                            rows={3}
+                                            className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-1">Reference Image (URL or Upload)</label>
+                                        <div className="flex space-x-2">
+                                            <input
+                                                type="text"
+                                                value={referenceImage}
+                                                onChange={(e) => setReferenceImage(e.target.value)}
+                                                placeholder="https://..."
+                                                className="flex-1 bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                            />
+                                            <label className="cursor-pointer bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg transition-colors flex items-center justify-center">
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                                </svg>
+                                                <input
+                                                    type="file"
+                                                    className="hidden"
+                                                    accept="image/*"
+                                                    onChange={(e) => {
+                                                        const file = e.target.files?.[0];
+                                                        if (file) {
+                                                            // Resize image before setting state
+                                                            const reader = new FileReader();
+                                                            reader.onload = (event) => {
+                                                                const img = new Image();
+                                                                img.onload = () => {
+                                                                    const canvas = document.createElement('canvas');
+                                                                    let width = img.width;
+                                                                    let height = img.height;
+                                                                    const MAX_SIZE = 1024;
 
-                <div className="flex flex-col items-center justify-center min-h-[400px] bg-black/20 rounded-xl border border-white/5 p-4">
-                    {result && (result.result?.image_url || result.result_url || result.image_urls?.[0]) ? (
-                        <img
-                            src={result.result?.image_url || result.result_url || result.image_urls?.[0]}
-                            alt="Generated"
-                            className="w-full h-auto rounded-lg shadow-2xl"
-                        />
-                    ) : (
-                        <div className="text-gray-500 flex flex-col items-center">
-                            {loading ? (
-                                <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-                            ) : (
-                                <span>Image will appear here</span>
+                                                                    if (width > height) {
+                                                                        if (width > MAX_SIZE) {
+                                                                            height *= MAX_SIZE / width;
+                                                                            width = MAX_SIZE;
+                                                                        }
+                                                                    } else {
+                                                                        if (height > MAX_SIZE) {
+                                                                            width *= MAX_SIZE / height;
+                                                                            height = MAX_SIZE;
+                                                                        }
+                                                                    }
+
+                                                                    canvas.width = width;
+                                                                    canvas.height = height;
+                                                                    const ctx = canvas.getContext('2d');
+                                                                    ctx?.drawImage(img, 0, 0, width, height);
+
+                                                                    // Compress to JPEG 0.8
+                                                                    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                                                                    setReferenceImage(dataUrl);
+                                                                };
+                                                                img.src = event.target?.result as string;
+                                                            };
+                                                            reader.readAsDataURL(file);
+                                                        }
+                                                    }}
+                                                />
+                                            </label>
+                                        </div>
+                                        {referenceImage && referenceImage.startsWith('data:image') && (
+                                            <p className="text-xs text-green-400 mt-1">Image loaded successfully</p>
+                                        )}
+                                    </div>
+                                    <button
+                                        onClick={generateRecipe}
+                                        disabled={loading}
+                                        className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-lg font-semibold text-white transition-all shadow-lg shadow-purple-500/20"
+                                    >
+                                        {loading ? 'Analyzing...' : 'Generate Recipe'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Step 2: Blueprint */}
+                            <div className={proStep >= 2 ? 'block' : 'hidden'}>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center">
+                                        <label className="block text-sm font-medium text-gray-300">Recipe (Structured Prompt)</label>
+                                        <button onClick={() => setProStep(1)} className="text-xs text-gray-500 hover:text-white">Back to Inspiration</button>
+                                    </div>
+                                    <textarea
+                                        value={structuredPrompt}
+                                        onChange={(e) => setStructuredPrompt(e.target.value)}
+                                        rows={8}
+                                        className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white font-mono text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-300 mb-1">Seed (Optional)</label>
+                                            <input
+                                                type="number"
+                                                value={seed}
+                                                onChange={(e) => setSeed(e.target.value === '' ? '' : Number(e.target.value))}
+                                                placeholder="Random"
+                                                className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-300 mb-1">Aspect Ratio</label>
+                                            <select
+                                                value={aspectRatio}
+                                                onChange={(e) => setAspectRatio(e.target.value)}
+                                                className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                            >
+                                                <option value="1:1">1:1 (Square)</option>
+                                                <option value="16:9">16:9 (Landscape)</option>
+                                                <option value="9:16">9:16 (Portrait)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={generateImage}
+                                        disabled={loading}
+                                        className="w-full py-3 bg-green-600 hover:bg-green-500 rounded-lg font-semibold text-white transition-all shadow-lg shadow-green-500/20"
+                                    >
+                                        {loading ? 'Creating...' : 'Generate Image'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Step 3: Refinement (Overlay on Step 2) */}
+                            {proStep === 3 && (
+                                <div className="pt-4 border-t border-white/10">
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Refine Result</label>
+                                    <div className="flex space-x-2">
+                                        <input
+                                            type="text"
+                                            value={prompt}
+                                            onChange={(e) => setPrompt(e.target.value)}
+                                            placeholder="e.g., make it brighter"
+                                            className="flex-1 bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                                        />
+                                        <button
+                                            onClick={generateImage}
+                                            disabled={loading}
+                                            className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors"
+                                        >
+                                            Refine
+                                        </button>
+                                    </div>
+                                </div>
                             )}
                         </div>
                     )}
 
-                    {result && (
-                        <div className="mt-4 w-full overflow-auto max-h-40 text-xs text-gray-500 font-mono bg-black/40 p-2 rounded">
-                            <pre>{JSON.stringify(result, null, 2)}</pre>
-                        </div>
-                    )}
+                    {status && <p className="text-sm text-gray-400 text-center animate-pulse">{status}</p>}
+                    {error && <p className="text-sm text-red-400 text-center bg-red-900/20 p-2 rounded">{error}</p>}
+                </div>
+
+                {/* Preview Section */}
+                <div className="lg:col-span-7">
+                    <div className="h-full min-h-[500px] bg-black/40 rounded-2xl border border-white/5 p-6 flex flex-col items-center justify-center relative overflow-hidden group">
+
+                        {/* Background Pattern */}
+                        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 pointer-events-none"></div>
+
+                        {result && (result.result?.image_url || result.result_url || result.image_urls?.[0]) ? (
+                            <div className="relative w-full h-full flex items-center justify-center">
+                                <img
+                                    src={result.result?.image_url || result.result_url || result.image_urls?.[0]}
+                                    alt="Generated"
+                                    className="max-w-full max-h-[600px] rounded-lg shadow-2xl object-contain"
+                                />
+                                <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <a
+                                        href={result.result?.image_url || result.result_url || result.image_urls?.[0]}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="bg-black/50 hover:bg-black/70 text-white px-4 py-2 rounded-full backdrop-blur-md text-sm"
+                                    >
+                                        Download HD
+                                    </a>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center space-y-4">
+                                {loading ? (
+                                    <div className="relative">
+                                        <div className="w-16 h-16 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                            <div className="w-8 h-8 bg-blue-500 rounded-full animate-pulse opacity-20"></div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-gray-600">
+                                        <svg className="w-16 h-16 mx-auto mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                        </svg>
+                                        <p>Your masterpiece will appear here</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Result JSON Overlay (Optional) */}
+                        {result && (
+                            <div className="absolute top-4 right-4">
+                                <details className="text-xs text-gray-500">
+                                    <summary className="cursor-pointer hover:text-white list-none bg-black/50 px-2 py-1 rounded backdrop-blur-sm">Debug Info</summary>
+                                    <div className="mt-2 bg-black/80 p-4 rounded-lg max-w-xs overflow-auto max-h-60 text-left">
+                                        <pre>{JSON.stringify(result, null, 2)}</pre>
+                                    </div>
+                                </details>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
