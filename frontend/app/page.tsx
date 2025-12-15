@@ -4,12 +4,13 @@ import { useState } from 'react';
 import ImageGenerator from "./components/ImageGenerator";
 import ImageEditor from "./components/ImageEditor";
 import VideoEditor from "./components/VideoEditor";
+import HistoryPanel from "./components/HistoryPanel";
 import UserMenu from "./components/UserMenu";
 import AuthModal from "./components/AuthModal";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
 function HomeContent() {
-  const [activeTab, setActiveTab] = useState<'generator' | 'editor' | 'video'>('generator');
+  const [activeTab, setActiveTab] = useState<'generator' | 'editor' | 'video' | 'history'>('generator');
   const [showAuthModal, setShowAuthModal] = useState(false);
   const { user, loading } = useAuth();
 
@@ -75,8 +76,8 @@ function HomeContent() {
           <button
             onClick={() => setActiveTab('generator')}
             className={`px-6 py-2 rounded-lg font-semibold transition-all ${activeTab === 'generator'
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
+              : 'text-gray-400 hover:text-white hover:bg-white/5'
               }`}
           >
             Generator
@@ -84,8 +85,8 @@ function HomeContent() {
           <button
             onClick={() => setActiveTab('editor')}
             className={`px-6 py-2 rounded-lg font-semibold transition-all ${activeTab === 'editor'
-                ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/25'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
+              ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/25'
+              : 'text-gray-400 hover:text-white hover:bg-white/5'
               }`}
           >
             Editor
@@ -99,10 +100,27 @@ function HomeContent() {
           >
             Video
           </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`px-6 py-2 rounded-lg font-semibold transition-all ${activeTab === 'history'
+                ? 'bg-green-600 text-white shadow-lg shadow-green-500/25'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
+          >
+            History
+          </button>
         </div>
 
         <div className="w-full animate-fadeIn">
-          {activeTab === 'generator' ? <ImageGenerator /> : activeTab === 'editor' ? <ImageEditor /> : <VideoEditor />}
+          {activeTab === 'generator' ? (
+            <ImageGenerator />
+          ) : activeTab === 'editor' ? (
+            <ImageEditor />
+          ) : activeTab === 'video' ? (
+            <VideoEditor />
+          ) : (
+            <HistoryPanel />
+          )}
         </div>
 
         <footer className="mt-20 text-gray-600 text-sm">

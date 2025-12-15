@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { saveGeneration } from '@/lib/firestore';
 
 export default function ImageGenerator() {
     const examplePrompt = `{
@@ -49,6 +51,38 @@ export default function ImageGenerator() {
     const [referenceImage, setReferenceImage] = useState('');
     const [seed, setSeed] = useState<number | ''>('');
     const [proStep, setProStep] = useState<1 | 2 | 3>(1); // 1: Inspiration, 2: Blueprint, 3: Creation
+
+    const { user } = useAuth();
+
+    const saveToHistory = async (data: any) => {
+        if (!user) return;
+
+        try {
+            const imageUrl = data.result_url || data.result?.image_url || data.image_url;
+
+            // Build payload object, only including defined values
+            const payload: any = {
+                type: 'image',
+                imageUrl,
+                aspectRatio,
+                mode: v2Mode,
+            };
+
+            // Only add optional fields if they have values
+            if (prompt) payload.prompt = prompt;
+            if (v2Mode === 'pro' && structuredPrompt) {
+                try {
+                    payload.structuredPrompt = JSON.parse(structuredPrompt);
+                } catch (e) {
+                    // Skip if invalid JSON
+                }
+            }
+
+            await saveGeneration(user.uid, payload);
+        } catch (error) {
+            console.error('Failed to save to history:', error);
+        }
+    };
 
     const validateJSON = (jsonString: string) => {
         try {
@@ -240,11 +274,13 @@ export default function ImageGenerator() {
                 setLoading(false);
                 setStatus('Completed');
                 if (v2Mode === 'pro') setProStep(3);
+                await saveToHistory(data);
             } else {
                 setResult(data);
                 setLoading(false);
                 setStatus('Completed');
                 if (v2Mode === 'pro') setProStep(3);
+                await saveToHistory(data);
             }
 
         } catch (err: any) {
@@ -270,6 +306,9 @@ export default function ImageGenerator() {
                     setLoading(false);
                     setStatus('Completed');
                     if (v2Mode === 'pro') setProStep(3);
+
+                    // Save to history
+                    await saveToHistory(data);
                 } else if (data.status === 'FAILED') {
                     clearInterval(pollInterval);
                     setError('Generation Failed');

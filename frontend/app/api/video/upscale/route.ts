@@ -14,11 +14,12 @@ export async function POST(request: Request) {
 
         const payload = {
             video: video,
-            desired_increase: String(desired_increase),
+            desired_increase: parseInt(String(desired_increase), 10),
             output_container_and_codec: output_container_and_codec || 'mp4_h265'
         };
 
-        console.log('Sending payload to Bria (video upscale):', JSON.stringify({ ...payload, video: payload.video ? payload.video.substring(0, 50) + '...' : 'missing' }));
+        console.log('Upscale Payload:', JSON.stringify(payload, null, 2));
+        console.log('Type of desired_increase:', typeof payload.desired_increase);
 
         const response = await fetch(endpoint, {
             method: 'POST',

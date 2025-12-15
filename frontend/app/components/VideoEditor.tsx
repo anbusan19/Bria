@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { saveGeneration } from '@/lib/firestore';
 
 type VideoMode = 'upscale' | 'remove_bg' | 'foreground_mask';
 
@@ -15,6 +17,21 @@ export default function VideoEditor() {
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    const { user } = useAuth();
+
+    const saveToHistory = async (videoUrl: string) => {
+        if (!user) return;
+        try {
+            await saveGeneration(user.uid, {
+                type: 'video',
+                videoUrl,
+                videoTool: mode,
+            });
+        } catch (error) {
+            console.error('Failed to save to history:', error);
+        }
+    };
 
     const handleProcess = async () => {
         if (!video) return;
@@ -72,6 +89,7 @@ export default function VideoEditor() {
 
             setResult(resultUrl);
             setLoading(false);
+            await saveToHistory(resultUrl);
 
         } catch (err: any) {
             setError(err.message);
@@ -101,6 +119,7 @@ export default function VideoEditor() {
 
                     setResult(resultUrl);
                     setLoading(false);
+                    await saveToHistory(resultUrl);
                 } else if (data.status === 'FAILED') {
                     clearInterval(pollInterval);
                     setError('Processing Failed');
@@ -173,15 +192,26 @@ export default function VideoEditor() {
                                 <label className="block text-sm font-medium text-gray-300 mb-2">
                                     Resolution Increase: {upscaleMultiplier}x
                                 </label>
-                                <input
-                                    type="range"
-                                    min="2"
-                                    max="4"
-                                    step="1"
-                                    value={upscaleMultiplier}
-                                    onChange={(e) => setUpscaleMultiplier(Number(e.target.value))}
-                                    className="w-full"
-                                />
+                                <div className="flex space-x-4">
+                                    <button
+                                        onClick={() => setUpscaleMultiplier(2)}
+                                        className={`flex-1 py-2 rounded-lg border border-white/10 transition-all ${upscaleMultiplier === 2
+                                                ? 'bg-pink-600 text-white shadow-lg shadow-pink-500/20'
+                                                : 'bg-black/40 text-gray-400 hover:bg-white/10'
+                                            }`}
+                                    >
+                                        2x Scale
+                                    </button>
+                                    <button
+                                        onClick={() => setUpscaleMultiplier(4)}
+                                        className={`flex-1 py-2 rounded-lg border border-white/10 transition-all ${upscaleMultiplier === 4
+                                                ? 'bg-pink-600 text-white shadow-lg shadow-pink-500/20'
+                                                : 'bg-black/40 text-gray-400 hover:bg-white/10'
+                                            }`}
+                                    >
+                                        4x Scale
+                                    </button>
+                                </div>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-2">Codec</label>
