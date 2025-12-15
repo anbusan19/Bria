@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import ImageGenerator from "./components/ImageGenerator";
 import ImageEditor from "./components/ImageEditor";
+import VideoEditor from "./components/VideoEditor";
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'generator' | 'editor'>('generator');
+  const [activeTab, setActiveTab] = useState<'generator' | 'editor' | 'video'>('generator');
 
   return (
     <div className="min-h-screen bg-black text-white font-sans selection:bg-blue-500/30">
@@ -28,8 +29,8 @@ export default function Home() {
           <button
             onClick={() => setActiveTab('generator')}
             className={`px-6 py-2 rounded-lg font-semibold transition-all ${activeTab === 'generator'
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
+              : 'text-gray-400 hover:text-white hover:bg-white/5'
               }`}
           >
             Generator
@@ -37,16 +38,25 @@ export default function Home() {
           <button
             onClick={() => setActiveTab('editor')}
             className={`px-6 py-2 rounded-lg font-semibold transition-all ${activeTab === 'editor'
-                ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/25'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
+              ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/25'
+              : 'text-gray-400 hover:text-white hover:bg-white/5'
               }`}
           >
             Editor
           </button>
+          <button
+            onClick={() => setActiveTab('video')}
+            className={`px-6 py-2 rounded-lg font-semibold transition-all ${activeTab === 'video'
+                ? 'bg-pink-600 text-white shadow-lg shadow-pink-500/25'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
+          >
+            Video
+          </button>
         </div>
 
         <div className="w-full animate-fadeIn">
-          {activeTab === 'generator' ? <ImageGenerator /> : <ImageEditor />}
+          {activeTab === 'generator' ? <ImageGenerator /> : activeTab === 'editor' ? <ImageEditor /> : <VideoEditor />}
         </div>
 
         <footer className="mt-20 text-gray-600 text-sm">

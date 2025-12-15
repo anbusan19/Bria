@@ -39,7 +39,6 @@ export default function ImageGenerator() {
     const [prompt, setPrompt] = useState('');
     const [structuredPrompt, setStructuredPrompt] = useState(examplePrompt);
     const [aspectRatio, setAspectRatio] = useState('1:1');
-    const [modelVersion, setModelVersion] = useState('v2');
     const [v2Mode, setV2Mode] = useState<'quick' | 'pro'>('quick');
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<any>(null);
@@ -180,48 +179,44 @@ export default function ImageGenerator() {
         try {
             let payload: any = {
                 aspect_ratio: aspectRatio,
-                model_version: modelVersion,
+                model_version: 'v2',
             };
 
-            if (modelVersion === '3.2') {
+            // V2 Mode
+            if (v2Mode === 'quick') {
+                if (!prompt) {
+                    setError("Prompt is required for Quick Mode");
+                    setLoading(false);
+                    return;
+                }
                 payload.prompt = prompt;
             } else {
-                // V2
-                if (v2Mode === 'quick') {
-                    if (!prompt) {
-                        setError("Prompt is required for Quick Mode");
-                        setLoading(false);
-                        return;
+                // Pro Mode
+                if (proStep >= 2) {
+                    const validationError = validateJSON(structuredPrompt);
+                    if (validationError) {
+                        throw new Error(validationError);
                     }
-                    payload.prompt = prompt;
+                    try {
+                        payload.structured_prompt = JSON.parse(structuredPrompt);
+                    } catch (e) {
+                        throw new Error("Invalid JSON in Structured Prompt");
+                    }
+
+                    if (prompt && proStep === 3) {
+                        payload.prompt = prompt;
+                    }
+
+                    // Ensure reference image is passed if available
+                    if (referenceImage) {
+                        payload.images = [referenceImage];
+                    }
                 } else {
-                    // Pro Mode
-                    if (proStep >= 2) {
-                        const validationError = validateJSON(structuredPrompt);
-                        if (validationError) {
-                            throw new Error(validationError);
-                        }
-                        try {
-                            payload.structured_prompt = JSON.parse(structuredPrompt);
-                        } catch (e) {
-                            throw new Error("Invalid JSON in Structured Prompt");
-                        }
-
-                        if (prompt && proStep === 3) {
-                            payload.prompt = prompt;
-                        }
-
-                        // Ensure reference image is passed if available
-                        if (referenceImage) {
-                            payload.images = [referenceImage];
-                        }
-                    } else {
-                        if (prompt) payload.prompt = prompt;
-                        if (referenceImage) payload.images = [referenceImage];
-                    }
-
-                    if (seed) payload.seed = Number(seed);
+                    if (prompt) payload.prompt = prompt;
+                    if (referenceImage) payload.images = [referenceImage];
                 }
+
+                if (seed) payload.seed = Number(seed);
             }
 
             const res = await fetch('/api/generate-image', {
@@ -302,32 +297,20 @@ export default function ImageGenerator() {
                 {/* Controls Section */}
                 <div className="lg:col-span-5 space-y-6">
 
-                    {/* Model & Mode Selection */}
-                    <div className="flex space-x-4 bg-black/20 p-2 rounded-lg">
-                        <select
-                            value={modelVersion}
-                            onChange={(e) => setModelVersion(e.target.value)}
-                            className="bg-transparent text-white font-semibold focus:outline-none w-1/2"
+                    {/* Mode Selection */}
+                    <div className="flex space-x-2 bg-black/20 p-2 rounded-lg justify-center">
+                        <button
+                            onClick={() => setV2Mode('quick')}
+                            className={`px-6 py-2 rounded-md font-semibold transition-colors ${v2Mode === 'quick' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                         >
-                            <option value="v2">V2 (FIBO)</option>
-                            <option value="3.2">V1 (Base 3.2)</option>
-                        </select>
-                        {modelVersion === 'v2' && (
-                            <div className="flex space-x-2 w-1/2 justify-end">
-                                <button
-                                    onClick={() => setV2Mode('quick')}
-                                    className={`px-3 py-1 rounded-md text-sm transition-colors ${v2Mode === 'quick' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
-                                >
-                                    Quick
-                                </button>
-                                <button
-                                    onClick={() => setV2Mode('pro')}
-                                    className={`px-3 py-1 rounded-md text-sm transition-colors ${v2Mode === 'pro' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}
-                                >
-                                    Pro Builder
-                                </button>
-                            </div>
-                        )}
+                            Quick Mode
+                        </button>
+                        <button
+                            onClick={() => setV2Mode('pro')}
+                            className={`px-6 py-2 rounded-md font-semibold transition-colors ${v2Mode === 'pro' ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/25' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                        >
+                            Pro Builder
+                        </button>
                     </div>
 
                     {/* Quick Mode UI */}
