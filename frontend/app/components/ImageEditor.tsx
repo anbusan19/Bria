@@ -23,13 +23,24 @@ export default function ImageEditor() {
         if (image && canvasRef.current && imageRef.current) {
             const canvas = canvasRef.current;
             const img = imageRef.current;
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                // Fill with transparent black for better visibility of mask? 
-                // Or just keep transparent.
+            
+            // Wait for image to fully load
+            if (img.complete) {
+                canvas.width = img.naturalWidth || img.width;
+                canvas.height = img.naturalHeight || img.height;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                }
+            } else {
+                img.onload = () => {
+                    canvas.width = img.naturalWidth || img.width;
+                    canvas.height = img.naturalHeight || img.height;
+                    const ctx = canvas.getContext('2d');
+                    if (ctx) {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    }
+                };
             }
         }
     }, [image]);
@@ -106,6 +117,9 @@ export default function ImageEditor() {
         ctx.arc(x, y, brushSize, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(255, 255, 255, 1)'; // White mask
         ctx.fill();
+        
+        // Update mask in real-time as user draws
+        setMask(canvas.toDataURL());
     };
 
     const clearMask = () => {
@@ -117,7 +131,23 @@ export default function ImageEditor() {
     };
 
     const handleEdit = async () => {
-        if (!image) return;
+        if (!image) {
+            setError('Please upload an image first');
+            return;
+        }
+
+        // Validate mask for erase and gen_fill modes
+        if ((mode === 'erase' || mode === 'gen_fill') && !mask) {
+            setError('Please draw a mask on the image first');
+            return;
+        }
+
+        // Validate prompt for gen_fill and replace_bg modes
+        if ((mode === 'gen_fill' || mode === 'replace_bg') && (!prompt || prompt.trim() === '')) {
+            setError('Please enter a prompt');
+            return;
+        }
+
         setLoading(true);
         setError(null);
         setResult(null);
@@ -161,42 +191,67 @@ export default function ImageEditor() {
 
             const data = await res.json();
 
-            if (res.status === 202 && data.status_url) {
-                setLoading(true); // Keep loading true
-                pollStatus(data.status_url);
-                return;
+            // Bria API v2 returns async responses with status_url or request_id
+            // Check for async response indicators (status_url, request_id, or status field)
+            if (data.status_url || data.request_id || (data.status && data.status !== 'COMPLETED')) {
+                // This is an async request, start polling
+                const statusUrl = data.status_url || (data.request_id ? `https://engine.prod.bria-api.com/v2/status/${data.request_id}` : null);
+                if (statusUrl) {
+                    setLoading(true); // Keep loading true
+                    pollStatus(statusUrl);
+                    return;
+                }
             }
 
-            // Bria usually returns { result: "url" } or { result: { image_url: "..." } }
-            // Need to handle various response formats
+            // Handle synchronous response or completed status
             let resultUrl = '';
             if (data.result_url) resultUrl = data.result_url;
-            else if (typeof data.result === 'string') resultUrl = data.result; // Sometimes it returns raw URL?
+            else if (typeof data.result === 'string') resultUrl = data.result;
             else if (data.result?.image_url) resultUrl = data.result.image_url;
             else if (data.image_urls?.[0]) resultUrl = data.image_urls[0];
-            else resultUrl = JSON.stringify(data); // Fallback
+            else if (data.status === 'COMPLETED' && data.result) {
+                // Handle completed async response
+                if (typeof data.result === 'string') resultUrl = data.result;
+                else if (data.result.image_url) resultUrl = data.result.image_url;
+            } else {
+                // Fallback: log the response for debugging
+                console.warn('Unexpected response format:', data);
+                throw new Error('Unexpected response format from API');
+            }
 
             setResult(resultUrl);
+            setLoading(false);
 
         } catch (err: any) {
-            setError(err.message);
-        } finally {
-            // Only set loading false if NOT polling
-            // If polling, pollStatus will handle it
+            setError(err.message || 'An error occurred');
+            setLoading(false);
         }
     };
 
     const pollStatus = async (statusUrl: string) => {
+        let pollCount = 0;
+        const maxPolls = 60; // Maximum 2 minutes (60 * 2 seconds)
+        
         const pollInterval = setInterval(async () => {
+            pollCount++;
+            
+            if (pollCount > maxPolls) {
+                clearInterval(pollInterval);
+                setError('Request timed out. Please try again.');
+                setLoading(false);
+                return;
+            }
+
             try {
                 const res = await fetch(`/api/poll-image?url=${encodeURIComponent(statusUrl)}`);
                 if (!res.ok) {
                     clearInterval(pollInterval);
-                    throw new Error('Polling failed');
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.error || errData.details || 'Polling failed');
                 }
                 const data = await res.json();
 
-                if (data.status === 'COMPLETED') {
+                if (data.status === 'COMPLETED' || data.status === 'completed') {
                     clearInterval(pollInterval);
 
                     let resultUrl = '';
@@ -204,20 +259,29 @@ export default function ImageEditor() {
                     else if (typeof data.result === 'string') resultUrl = data.result;
                     else if (data.result?.image_url) resultUrl = data.result.image_url;
                     else if (data.image_urls?.[0]) resultUrl = data.image_urls[0];
-                    else resultUrl = JSON.stringify(data);
+                    else if (data.result?.url) resultUrl = data.result.url;
+                    else {
+                        console.warn('Unexpected completed response format:', data);
+                        setError('Completed but could not extract result URL');
+                        setLoading(false);
+                        return;
+                    }
 
                     setResult(resultUrl);
                     setLoading(false);
-                } else if (data.status === 'FAILED') {
+                } else if (data.status === 'FAILED' || data.status === 'failed') {
                     clearInterval(pollInterval);
-                    setError('Edit Failed');
+                    setError(data.error || data.message || 'Edit operation failed');
                     setLoading(false);
+                } else if (data.status === 'PROCESSING' || data.status === 'processing' || data.status === 'PENDING' || data.status === 'pending') {
+                    // Still processing, continue polling
                 } else {
-                    // Still processing
+                    // Unknown status, log for debugging
+                    console.warn('Unknown status:', data.status, data);
                 }
             } catch (e: any) {
                 clearInterval(pollInterval);
-                setError(e.message);
+                setError(e.message || 'Error while checking status');
                 setLoading(false);
             }
         }, 2000);
@@ -290,9 +354,13 @@ export default function ImageEditor() {
                                 onChange={(e) => setBrushSize(Number(e.target.value))}
                                 className="w-full"
                             />
+                            <div className="mt-2 text-xs text-gray-400 mb-2">
+                                {mask ? '✓ Mask drawn' : 'Draw on the image to create a mask'}
+                            </div>
                             <button
                                 onClick={clearMask}
-                                className="mt-2 w-full px-3 py-1 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 text-sm"
+                                disabled={!mask}
+                                className="mt-2 w-full px-3 py-1 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Clear Mask
                             </button>

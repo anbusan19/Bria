@@ -12,8 +12,13 @@ export async function POST(request: Request) {
 
         const endpoint = 'https://engine.prod.bria-api.com/v2/image/edit/increase_resolution';
 
+        let imagePayload = image;
+        if (image && image.startsWith('data:image')) {
+            imagePayload = image.split(',')[1];
+        }
+
         const payload = {
-            image: image
+            image: imagePayload
         };
 
         console.log('Sending payload to Bria (upscale):', JSON.stringify({ ...payload, image: payload.image ? payload.image.substring(0, 50) + '...' : 'missing' }));

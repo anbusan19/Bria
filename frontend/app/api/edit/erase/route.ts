@@ -10,11 +10,29 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'BRIA_API_TOKEN not configured' }, { status: 500 });
         }
 
+        if (!image) {
+            return NextResponse.json({ error: 'Image is required' }, { status: 400 });
+        }
+
+        if (!mask) {
+            return NextResponse.json({ error: 'Mask is required for erase operation' }, { status: 400 });
+        }
+
         const endpoint = 'https://engine.prod.bria-api.com/v2/image/edit/erase';
 
+        let imagePayload = image;
+        if (image && image.startsWith('data:image')) {
+            imagePayload = image.split(',')[1];
+        }
+
+        let maskPayload = mask;
+        if (mask && mask.startsWith('data:image')) {
+            maskPayload = mask.split(',')[1];
+        }
+
         const payload = {
-            image: image,
-            mask: mask
+            image: imagePayload,
+            mask: maskPayload
         };
 
         console.log('Sending payload to Bria (erase):', JSON.stringify({
@@ -39,6 +57,9 @@ export async function POST(request: Request) {
         }
 
         const data = await response.json();
+        
+        // Bria API v2 returns async responses with request_id and status_url
+        // Pass through the response as-is so frontend can handle async polling
         return NextResponse.json(data, { status: response.status });
 
     } catch (error) {
