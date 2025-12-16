@@ -25,52 +25,23 @@ export async function POST(request: Request) {
 
     console.log('Sending payload to Bria (replace-bg):', JSON.stringify({ ...payload, image: payload.image ? payload.image.substring(0, 50) + '...' : 'missing' }));
 
-    // Use AbortController to set a longer timeout (30s) and retry once on failure
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000); // 30 seconds
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'api_token': apiToken,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      if (!response.ok) {
-        const errorText = await response.text();
-        return NextResponse.json({ error: `API Error: ${response.status}`, details: errorText }, { status: response.status });
-      }
-      const data = await response.json();
-      return NextResponse.json(data, { status: response.status });
-    } catch (err) {
-      clearTimeout(timeout);
-      console.error('Fetch error (replace-bg):', err);
-      // Simple retry once
-      try {
-        const retryResponse = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'api_token': apiToken,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        });
-        if (!retryResponse.ok) {
-          const errText = await retryResponse.text();
-          return NextResponse.json({ error: `API Error after retry: ${retryResponse.status}`, details: errText }, { status: retryResponse.status });
-        }
-        const retryData = await retryResponse.json();
-        return NextResponse.json(retryData, { status: retryResponse.status });
-      } catch (retryErr) {
-        console.error('Retry fetch error (replace-bg):', retryErr);
-        return NextResponse.json({ error: 'Internal Server Error after retry' }, { status: 500 });
-      }
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'api_token': apiToken,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return NextResponse.json({ error: `API Error: ${response.status}`, details: errorText }, { status: response.status });
     }
+
+    const data = await response.json();
+    return NextResponse.json(data, { status: response.status });
 
   } catch (error) {
     console.error('Error replacing background:', error);
