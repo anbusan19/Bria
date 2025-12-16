@@ -6,9 +6,10 @@ import { useAuth } from '@/contexts/AuthContext';
 interface AuthModalProps {
     isOpen: boolean;
     onClose: () => void;
+    onSuccess?: () => void;
 }
 
-export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
+export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
     const [isSignUp, setIsSignUp] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -25,6 +26,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
             setError(null);
             await signInWithGoogle();
             onClose();
+            if (onSuccess) onSuccess();
         } catch (err: any) {
             setError(err.message || 'Failed to sign in with Google');
         } finally {
@@ -45,6 +47,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
             }
 
             onClose();
+            if (onSuccess) onSuccess();
         } catch (err: any) {
             setError(err.message || `Failed to ${isSignUp ? 'sign up' : 'sign in'}`);
         } finally {
@@ -54,7 +57,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-gradient-to-br from-gray-900 to-black border border-white/10 rounded-2xl p-8 max-w-md w-full shadow-2xl">
+            <div className="bg-[#0f0f11] backdrop-blur-xl border border-white/10 rounded-2xl p-8 max-w-md w-full shadow-2xl">
                 <h2 className="text-3xl font-bold mb-6 text-white">
                     {isSignUp ? 'Create Account' : 'Welcome Back'}
                 </h2>
@@ -85,7 +88,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                         <div className="w-full border-t border-white/10"></div>
                     </div>
                     <div className="relative flex justify-center text-sm">
-                        <span className="px-2 bg-gray-900 text-gray-500">or</span>
+                        <span className="px-2 bg-[#0f0f11] text-gray-500">or</span>
                     </div>
                 </div>
 
@@ -99,7 +102,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                             onChange={(e) => setEmail(e.target.value)}
                             placeholder="your@email.com"
                             required
-                            className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white/20"
                         />
                     </div>
                     <div>
@@ -111,13 +114,13 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                             placeholder="••••••••"
                             required
                             minLength={6}
-                            className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white/20"
                         />
                     </div>
                     <button
                         type="submit"
                         disabled={loading}
-                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold text-white transition-colors disabled:opacity-50"
+                        className="w-full py-3 bg-white text-black hover:bg-gray-200 rounded-lg font-semibold transition-colors disabled:opacity-50"
                     >
                         {loading ? 'Loading...' : isSignUp ? 'Sign Up' : 'Sign In'}
                     </button>
@@ -127,7 +130,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                     {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
                     <button
                         onClick={() => setIsSignUp(!isSignUp)}
-                        className="text-blue-400 hover:text-blue-300 font-semibold"
+                        className="text-white hover:text-gray-200 font-semibold"
                     >
                         {isSignUp ? 'Sign In' : 'Sign Up'}
                     </button>

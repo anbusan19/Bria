@@ -327,26 +327,23 @@ export default function ImageGenerator() {
     };
 
     return (
-        <div className="w-full max-w-6xl mx-auto p-6 bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 shadow-xl">
-            <h2 className="text-3xl font-bold mb-8 text-white bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
-                Bria AI Studio
-            </h2>
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="w-full bg-[#0f0f11] backdrop-blur-xl rounded-2xl border border-white/10 shadow-xl overflow-hidden">
+            <div className="p-6 lg:p-8">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
                 {/* Controls Section */}
-                <div className="lg:col-span-5 space-y-6">
+                <div className="lg:col-span-5 space-y-5">
 
                     {/* Mode Selection */}
-                    <div className="flex space-x-2 bg-black/20 p-2 rounded-lg justify-center">
+                    <div className="flex space-x-2 bg-white/5 p-1.5 rounded-xl border border-white/10 justify-center">
                         <button
                             onClick={() => setV2Mode('quick')}
-                            className={`px-6 py-2 rounded-md font-semibold transition-colors ${v2Mode === 'quick' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                            className={`px-6 py-2 rounded-lg font-semibold transition-colors ${v2Mode === 'quick' ? 'bg-white text-black shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                         >
                             Quick Mode
                         </button>
                         <button
                             onClick={() => setV2Mode('pro')}
-                            className={`px-6 py-2 rounded-md font-semibold transition-colors ${v2Mode === 'pro' ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/25' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                            className={`px-6 py-2 rounded-lg font-semibold transition-colors ${v2Mode === 'pro' ? 'bg-white text-black shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                         >
                             Pro Builder
                         </button>
@@ -354,7 +351,7 @@ export default function ImageGenerator() {
 
                     {/* Quick Mode UI */}
                     {v2Mode === 'quick' && (
-                        <div className="space-y-4 animate-fadeIn">
+                        <div className="space-y-5 animate-fadeIn">
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-1">Prompt</label>
                                 <textarea
@@ -362,7 +359,7 @@ export default function ImageGenerator() {
                                     onChange={(e) => setPrompt(e.target.value)}
                                     placeholder="Describe your image..."
                                     rows={4}
-                                    className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white/20"
                                 />
                             </div>
                             <div>
@@ -370,7 +367,7 @@ export default function ImageGenerator() {
                                 <select
                                     value={aspectRatio}
                                     onChange={(e) => setAspectRatio(e.target.value)}
-                                    className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white/20"
                                 >
                                     <option value="1:1">1:1 (Square)</option>
                                     <option value="16:9">16:9 (Landscape)</option>
@@ -380,7 +377,7 @@ export default function ImageGenerator() {
                             <button
                                 onClick={generateImage}
                                 disabled={loading}
-                                className="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold text-white transition-all shadow-lg shadow-blue-500/20"
+                                className="w-full py-3 bg-white text-black hover:bg-gray-200 rounded-lg font-semibold transition-all"
                             >
                                 {loading ? 'Generating...' : 'Generate Image'}
                             </button>
@@ -389,12 +386,12 @@ export default function ImageGenerator() {
 
                     {/* Pro Builder UI */}
                     {v2Mode === 'pro' && (
-                        <div className="space-y-6 animate-fadeIn">
+                        <div className="space-y-5 animate-fadeIn">
                             {/* Step Indicators */}
                             <div className="flex justify-between text-xs font-mono text-gray-500 border-b border-white/10 pb-2">
-                                <span className={proStep >= 1 ? 'text-blue-400' : ''}>1. INSPIRATION</span>
-                                <span className={proStep >= 2 ? 'text-purple-400' : ''}>2. BLUEPRINT</span>
-                                <span className={proStep >= 3 ? 'text-green-400' : ''}>3. CREATION</span>
+                                <span className={proStep >= 1 ? 'text-accent' : ''}>1. INSPIRATION</span>
+                                <span className={proStep >= 2 ? 'text-accent' : ''}>2. BLUEPRINT</span>
+                                <span className={proStep >= 3 ? 'text-accent' : ''}>3. CREATION</span>
                             </div>
 
                             {/* Step 1: Inspiration */}
@@ -407,7 +404,7 @@ export default function ImageGenerator() {
                                             onChange={(e) => setPrompt(e.target.value)}
                                             placeholder="What do you want to create?"
                                             rows={3}
-                                            className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white/20"
                                         />
                                     </div>
                                     <div>
@@ -477,7 +474,7 @@ export default function ImageGenerator() {
                                     <button
                                         onClick={generateRecipe}
                                         disabled={loading}
-                                        className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-lg font-semibold text-white transition-all shadow-lg shadow-purple-500/20"
+                                        className="w-full py-3 bg-white text-black hover:bg-gray-200 rounded-lg font-semibold transition-all"
                                     >
                                         {loading ? 'Analyzing...' : 'Generate Recipe'}
                                     </button>
@@ -505,7 +502,7 @@ export default function ImageGenerator() {
                                                 value={seed}
                                                 onChange={(e) => setSeed(e.target.value === '' ? '' : Number(e.target.value))}
                                                 placeholder="Random"
-                                                className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                                className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white/20"
                                             />
                                         </div>
                                         <div>
@@ -513,7 +510,7 @@ export default function ImageGenerator() {
                                             <select
                                                 value={aspectRatio}
                                                 onChange={(e) => setAspectRatio(e.target.value)}
-                                                className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                                className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white/20"
                                             >
                                                 <option value="1:1">1:1 (Square)</option>
                                                 <option value="16:9">16:9 (Landscape)</option>
@@ -524,7 +521,7 @@ export default function ImageGenerator() {
                                     <button
                                         onClick={generateImage}
                                         disabled={loading}
-                                        className="w-full py-3 bg-green-600 hover:bg-green-500 rounded-lg font-semibold text-white transition-all shadow-lg shadow-green-500/20"
+                                        className="w-full py-3 bg-white text-black hover:bg-gray-200 rounded-lg font-semibold transition-all"
                                     >
                                         {loading ? 'Creating...' : 'Generate Image'}
                                     </button>
@@ -541,7 +538,7 @@ export default function ImageGenerator() {
                                             value={prompt}
                                             onChange={(e) => setPrompt(e.target.value)}
                                             placeholder="e.g., make it brighter"
-                                            className="flex-1 bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                                            className="flex-1 bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white/20"
                                         />
                                         <button
                                             onClick={generateImage}
@@ -562,7 +559,7 @@ export default function ImageGenerator() {
 
                 {/* Preview Section */}
                 <div className="lg:col-span-7">
-                    <div className="h-full min-h-[500px] bg-black/40 rounded-2xl border border-white/5 p-6 flex flex-col items-center justify-center relative overflow-hidden group">
+                    <div className="h-full min-h-[500px] bg-[#0f0f11] rounded-xl border border-white/10 p-6 flex flex-col items-center justify-center relative overflow-hidden group">
 
                         {/* Background Pattern */}
                         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 pointer-events-none"></div>
@@ -579,7 +576,7 @@ export default function ImageGenerator() {
                                         href={result.result?.image_url || result.result_url || result.image_urls?.[0]}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="bg-black/50 hover:bg-black/70 text-white px-4 py-2 rounded-full backdrop-blur-md text-sm"
+                                        className="bg-white/10 hover:bg-white/20 border border-white/10 text-white px-4 py-2 rounded-full backdrop-blur-md text-sm"
                                     >
                                         Download HD
                                     </a>
@@ -591,7 +588,7 @@ export default function ImageGenerator() {
                                     <div className="relative">
                                         <div className="w-16 h-16 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
                                         <div className="absolute inset-0 flex items-center justify-center">
-                                            <div className="w-8 h-8 bg-blue-500 rounded-full animate-pulse opacity-20"></div>
+                                            <div className="w-8 h-8 bg-accent rounded-full animate-pulse opacity-20"></div>
                                         </div>
                                     </div>
                                 ) : (
@@ -609,7 +606,7 @@ export default function ImageGenerator() {
                         {result && (
                             <div className="absolute top-4 right-4">
                                 <details className="text-xs text-gray-500">
-                                    <summary className="cursor-pointer hover:text-white list-none bg-black/50 px-2 py-1 rounded backdrop-blur-sm">Debug Info</summary>
+                                    <summary className="cursor-pointer hover:text-white list-none bg-white/5 border border-white/10 px-2 py-1 rounded backdrop-blur-sm">Debug Info</summary>
                                     <div className="mt-2 bg-black/80 p-4 rounded-lg max-w-xs overflow-auto max-h-60 text-left">
                                         <pre>{JSON.stringify(result, null, 2)}</pre>
                                     </div>
@@ -617,6 +614,7 @@ export default function ImageGenerator() {
                             </div>
                         )}
                     </div>
+                </div>
                 </div>
             </div>
         </div>

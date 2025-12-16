@@ -59,19 +59,16 @@ export default function HistoryPanel() {
     }
 
     return (
-        <div className="w-full max-w-6xl mx-auto p-6 bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 shadow-xl">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-3xl font-bold text-white bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-blue-500">
-                    Your History
-                </h2>
-
+        <div className="w-full bg-[#0f0f11] backdrop-blur-xl rounded-2xl border border-white/10 shadow-xl overflow-hidden">
+            <div className="p-6 lg:p-8">
+                <div className="flex justify-between items-center mb-6">
                 {/* Filter */}
-                <div className="flex space-x-2 bg-black/20 p-1 rounded-lg">
+                <div className="flex space-x-2 bg-white/5 border border-white/10 p-1.5 rounded-xl ml-auto">
                     {(['all', 'image', 'video'] as const).map((f) => (
                         <button
                             key={f}
                             onClick={() => setFilter(f)}
-                            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors capitalize ${filter === f ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors capitalize ${filter === f ? 'bg-white text-black' : 'text-gray-400 hover:text-white hover:bg-white/5'
                                 }`}
                         >
                             {f}
@@ -96,10 +93,10 @@ export default function HistoryPanel() {
                     {generations.map((gen) => (
                         <div
                             key={gen.id}
-                            className="group relative bg-black/40 rounded-xl overflow-hidden border border-white/10 hover:border-white/30 transition-all"
+                            className="group relative bg-[#0f0f11] rounded-xl overflow-hidden border border-white/10 hover:border-white/30 transition-all"
                         >
                             {/* Media */}
-                            <div className="aspect-square bg-black/60 flex items-center justify-center overflow-hidden">
+                            <div className="aspect-square bg-white/5 flex items-center justify-center overflow-hidden">
                                 {gen.type === 'image' && gen.imageUrl ? (
                                     <img
                                         src={gen.imageUrl}
@@ -121,7 +118,7 @@ export default function HistoryPanel() {
                             </div>
 
                             {/* Info Overlay */}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-4">
+                            <div className="absolute inset-0 bg-gradient-to-t from-[#050505]/90 via-[#050505]/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-4">
                                 <div className="text-white text-sm space-y-1 mb-3">
                                     {gen.prompt && (
                                         <p className="line-clamp-2 mb-2">{gen.prompt}</p>
@@ -166,6 +163,7 @@ export default function HistoryPanel() {
                     ))}
                 </div>
             )}
+            </div>
         </div>
     );
 }

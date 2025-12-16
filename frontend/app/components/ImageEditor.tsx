@@ -23,13 +23,24 @@ export default function ImageEditor() {
         if (image && canvasRef.current && imageRef.current) {
             const canvas = canvasRef.current;
             const img = imageRef.current;
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                // Fill with transparent black for better visibility of mask? 
-                // Or just keep transparent.
+            
+            // Wait for image to fully load
+            if (img.complete) {
+                canvas.width = img.naturalWidth || img.width;
+                canvas.height = img.naturalHeight || img.height;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                }
+            } else {
+                img.onload = () => {
+                    canvas.width = img.naturalWidth || img.width;
+                    canvas.height = img.naturalHeight || img.height;
+                    const ctx = canvas.getContext('2d');
+                    if (ctx) {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    }
+                };
             }
         }
     }, [image]);
@@ -106,6 +117,9 @@ export default function ImageEditor() {
         ctx.arc(x, y, brushSize, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(255, 255, 255, 1)'; // White mask
         ctx.fill();
+        
+        // Update mask in real-time as user draws
+        setMask(canvas.toDataURL());
     };
 
     const clearMask = () => {
@@ -117,7 +131,23 @@ export default function ImageEditor() {
     };
 
     const handleEdit = async () => {
-        if (!image) return;
+        if (!image) {
+            setError('Please upload an image first');
+            return;
+        }
+
+        // Validate mask for erase and gen_fill modes
+        if ((mode === 'erase' || mode === 'gen_fill') && !mask) {
+            setError('Please draw a mask on the image first');
+            return;
+        }
+
+        // Validate prompt for gen_fill and replace_bg modes
+        if ((mode === 'gen_fill' || mode === 'replace_bg') && (!prompt || prompt.trim() === '')) {
+            setError('Please enter a prompt');
+            return;
+        }
+
         setLoading(true);
         setError(null);
         setResult(null);
@@ -161,42 +191,67 @@ export default function ImageEditor() {
 
             const data = await res.json();
 
-            if (res.status === 202 && data.status_url) {
-                setLoading(true); // Keep loading true
-                pollStatus(data.status_url);
-                return;
+            // Bria API v2 returns async responses with status_url or request_id
+            // Check for async response indicators (status_url, request_id, or status field)
+            if (data.status_url || data.request_id || (data.status && data.status !== 'COMPLETED')) {
+                // This is an async request, start polling
+                const statusUrl = data.status_url || (data.request_id ? `https://engine.prod.bria-api.com/v2/status/${data.request_id}` : null);
+                if (statusUrl) {
+                    setLoading(true); // Keep loading true
+                    pollStatus(statusUrl);
+                    return;
+                }
             }
 
-            // Bria usually returns { result: "url" } or { result: { image_url: "..." } }
-            // Need to handle various response formats
+            // Handle synchronous response or completed status
             let resultUrl = '';
             if (data.result_url) resultUrl = data.result_url;
-            else if (typeof data.result === 'string') resultUrl = data.result; // Sometimes it returns raw URL?
+            else if (typeof data.result === 'string') resultUrl = data.result;
             else if (data.result?.image_url) resultUrl = data.result.image_url;
             else if (data.image_urls?.[0]) resultUrl = data.image_urls[0];
-            else resultUrl = JSON.stringify(data); // Fallback
+            else if (data.status === 'COMPLETED' && data.result) {
+                // Handle completed async response
+                if (typeof data.result === 'string') resultUrl = data.result;
+                else if (data.result.image_url) resultUrl = data.result.image_url;
+            } else {
+                // Fallback: log the response for debugging
+                console.warn('Unexpected response format:', data);
+                throw new Error('Unexpected response format from API');
+            }
 
             setResult(resultUrl);
+            setLoading(false);
 
         } catch (err: any) {
-            setError(err.message);
-        } finally {
-            // Only set loading false if NOT polling
-            // If polling, pollStatus will handle it
+            setError(err.message || 'An error occurred');
+            setLoading(false);
         }
     };
 
     const pollStatus = async (statusUrl: string) => {
+        let pollCount = 0;
+        const maxPolls = 60; // Maximum 2 minutes (60 * 2 seconds)
+        
         const pollInterval = setInterval(async () => {
+            pollCount++;
+            
+            if (pollCount > maxPolls) {
+                clearInterval(pollInterval);
+                setError('Request timed out. Please try again.');
+                setLoading(false);
+                return;
+            }
+
             try {
                 const res = await fetch(`/api/poll-image?url=${encodeURIComponent(statusUrl)}`);
                 if (!res.ok) {
                     clearInterval(pollInterval);
-                    throw new Error('Polling failed');
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.error || errData.details || 'Polling failed');
                 }
                 const data = await res.json();
 
-                if (data.status === 'COMPLETED') {
+                if (data.status === 'COMPLETED' || data.status === 'completed') {
                     clearInterval(pollInterval);
 
                     let resultUrl = '';
@@ -204,36 +259,42 @@ export default function ImageEditor() {
                     else if (typeof data.result === 'string') resultUrl = data.result;
                     else if (data.result?.image_url) resultUrl = data.result.image_url;
                     else if (data.image_urls?.[0]) resultUrl = data.image_urls[0];
-                    else resultUrl = JSON.stringify(data);
+                    else if (data.result?.url) resultUrl = data.result.url;
+                    else {
+                        console.warn('Unexpected completed response format:', data);
+                        setError('Completed but could not extract result URL');
+                        setLoading(false);
+                        return;
+                    }
 
                     setResult(resultUrl);
                     setLoading(false);
-                } else if (data.status === 'FAILED') {
+                } else if (data.status === 'FAILED' || data.status === 'failed') {
                     clearInterval(pollInterval);
-                    setError('Edit Failed');
+                    setError(data.error || data.message || 'Edit operation failed');
                     setLoading(false);
+                } else if (data.status === 'PROCESSING' || data.status === 'processing' || data.status === 'PENDING' || data.status === 'pending') {
+                    // Still processing, continue polling
                 } else {
-                    // Still processing
+                    // Unknown status, log for debugging
+                    console.warn('Unknown status:', data.status, data);
                 }
             } catch (e: any) {
                 clearInterval(pollInterval);
-                setError(e.message);
+                setError(e.message || 'Error while checking status');
                 setLoading(false);
             }
         }, 2000);
     };
 
     return (
-        <div className="w-full max-w-6xl mx-auto p-6 bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 shadow-xl">
-            <h2 className="text-3xl font-bold mb-8 text-white bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-blue-500">
-                AI Image Editor
-            </h2>
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="w-full bg-[#0f0f11] backdrop-blur-xl rounded-2xl border border-white/10 shadow-xl overflow-hidden">
+            <div className="p-6 lg:p-8">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
                 {/* Controls */}
-                <div className="lg:col-span-4 space-y-6">
+                <div className="lg:col-span-4 space-y-5">
                     {/* Upload */}
-                    <div className="bg-black/20 p-4 rounded-lg border border-white/10">
+                    <div className="bg-white/5 p-4 rounded-xl border border-white/10">
                         <label className="block text-sm font-medium text-gray-300 mb-2">Source Image</label>
                         <input
                             type="file"
@@ -243,20 +304,20 @@ export default function ImageEditor() {
                                 file:mr-4 file:py-2 file:px-4
                                 file:rounded-full file:border-0
                                 file:text-sm file:font-semibold
-                                file:bg-blue-600 file:text-white
-                                hover:file:bg-blue-700"
+                                file:bg-white file:text-black
+                                hover:file:bg-gray-200"
                         />
                     </div>
 
                     {/* Tools */}
-                    <div className="bg-black/20 p-4 rounded-lg border border-white/10">
+                    <div className="bg-white/5 p-4 rounded-lg border border-white/10">
                         <label className="block text-sm font-medium text-gray-300 mb-2">Tool</label>
                         <div className="grid grid-cols-2 gap-2">
                             {(['remove_bg', 'replace_bg', 'erase', 'gen_fill', 'upscale'] as EditMode[]).map((m) => (
                                 <button
                                     key={m}
                                     onClick={() => setMode(m)}
-                                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors capitalize ${mode === m ? 'bg-blue-600 text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors capitalize ${mode === m ? 'bg-white text-black' : 'bg-white/5 text-gray-400 hover:bg-white/10'
                                         }`}
                                 >
                                     {m.replace('_', ' ')}
@@ -273,7 +334,7 @@ export default function ImageEditor() {
                                 value={prompt}
                                 onChange={(e) => setPrompt(e.target.value)}
                                 placeholder="Describe the change..."
-                                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white/20"
                                 rows={3}
                             />
                         </div>
@@ -290,9 +351,13 @@ export default function ImageEditor() {
                                 onChange={(e) => setBrushSize(Number(e.target.value))}
                                 className="w-full"
                             />
+                            <div className="mt-2 text-xs text-gray-400 mb-2">
+                                {mask ? '✓ Mask drawn' : 'Draw on the image to create a mask'}
+                            </div>
                             <button
                                 onClick={clearMask}
-                                className="mt-2 w-full px-3 py-1 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 text-sm"
+                                disabled={!mask}
+                                className="mt-2 w-full px-3 py-1 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Clear Mask
                             </button>
@@ -302,7 +367,7 @@ export default function ImageEditor() {
                     <button
                         onClick={handleEdit}
                         disabled={loading || !image}
-                        className="w-full py-3 bg-gradient-to-r from-green-500 to-blue-600 hover:from-green-400 hover:to-blue-500 rounded-lg font-bold text-white shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full py-3 bg-white text-black hover:bg-gray-200 rounded-lg font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {loading ? 'Processing...' : 'Apply Effect'}
                     </button>
@@ -312,7 +377,7 @@ export default function ImageEditor() {
 
                 {/* Canvas / Preview */}
                 <div className="lg:col-span-8">
-                    <div className="relative bg-black/40 rounded-2xl border border-white/5 overflow-hidden min-h-[500px] flex items-center justify-center">
+                    <div className="relative bg-[#0f0f11] rounded-xl border border-white/10 overflow-hidden min-h-[500px] flex items-center justify-center">
                         {!image && !result && (
                             <div className="text-gray-500">Upload an image to start editing</div>
                         )}
@@ -350,7 +415,7 @@ export default function ImageEditor() {
                                         href={result}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="px-6 py-2 bg-green-600 hover:bg-green-500 rounded-full text-white text-sm font-semibold shadow-lg shadow-green-500/20 transition-all"
+                                        className="px-6 py-2 bg-white text-black hover:bg-gray-200 rounded-full text-sm font-semibold transition-all"
                                     >
                                         Download HD
                                     </a>
@@ -364,6 +429,7 @@ export default function ImageEditor() {
                             </div>
                         )}
                     </div>
+                </div>
                 </div>
             </div>
         </div>

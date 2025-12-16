@@ -10,11 +10,25 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'BRIA_API_TOKEN not configured' }, { status: 500 });
         }
 
+        if (!video) {
+            return NextResponse.json({ error: 'Video is required' }, { status: 400 });
+        }
+
+        if (!desired_increase) {
+            return NextResponse.json({ error: 'desired_increase is required' }, { status: 400 });
+        }
+
+        // API expects '2' or '4' as strings
+        const desiredIncreaseStr = String(desired_increase);
+        if (desiredIncreaseStr !== '2' && desiredIncreaseStr !== '4') {
+            return NextResponse.json({ error: "desired_increase must be '2' or '4'" }, { status: 400 });
+        }
+
         const endpoint = 'https://engine.prod.bria-api.com/v2/video/edit/increase_resolution';
 
         const payload = {
             video: video,
-            desired_increase: parseInt(String(desired_increase), 10),
+            desired_increase: desiredIncreaseStr, // Send as string '2' or '4'
             output_container_and_codec: output_container_and_codec || 'mp4_h265'
         };
 
