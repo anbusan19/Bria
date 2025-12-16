@@ -11,9 +11,6 @@ export default function VideoEditor() {
     const [mode, setMode] = useState<VideoMode>('remove_bg');
     const [upscaleMultiplier, setUpscaleMultiplier] = useState(2);
     const [codec, setCodec] = useState('mp4_h265');
-    const [backgroundColor, setBackgroundColor] = useState('Transparent');
-    const [removeBgCodec, setRemoveBgCodec] = useState('webm_vp9');
-    const [foregroundMaskCodec, setForegroundMaskCodec] = useState('mp4_h264');
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -34,7 +31,11 @@ export default function VideoEditor() {
     };
 
     const handleProcess = async () => {
-        if (!video) return;
+        if (!video || video.trim() === '') {
+            setError('Please enter a video URL');
+            return;
+        }
+
         setLoading(true);
         setError(null);
         setResult(null);
@@ -51,12 +52,11 @@ export default function VideoEditor() {
                     break;
                 case 'remove_bg':
                     endpoint = '/api/video/remove-background';
-                    payload.background_color = backgroundColor;
-                    payload.output_container_and_codec = removeBgCodec;
+                    // API only requires video, no background_color or codec options
                     break;
                 case 'foreground_mask':
                     endpoint = '/api/video/foreground-mask';
-                    payload.output_container_and_codec = foregroundMaskCodec;
+                    // API only requires video, no codec options
                     break;
             }
 
@@ -73,41 +73,67 @@ export default function VideoEditor() {
 
             const data = await res.json();
 
-            // Handle async response
-            if (res.status === 202 && data.status_url) {
-                pollStatus(data.status_url);
-                return;
+            // Bria API v2 returns async responses with status_url or request_id
+            // Check for async response indicators
+            if (data.status_url || data.request_id || (data.status && data.status !== 'COMPLETED')) {
+                // This is an async request, start polling
+                const statusUrl = data.status_url || (data.request_id ? `https://engine.prod.bria-api.com/v2/status/${data.request_id}` : null);
+                if (statusUrl) {
+                    setLoading(true); // Keep loading true
+                    pollStatus(statusUrl);
+                    return;
+                }
             }
 
-            // Extract result URL
+            // Handle synchronous response or completed status
             let resultUrl = '';
             if (data.result_url) resultUrl = data.result_url;
             else if (typeof data.result === 'string') resultUrl = data.result;
             else if (data.result?.video_url) resultUrl = data.result.video_url;
             else if (data.video_urls?.[0]) resultUrl = data.video_urls[0];
-            else resultUrl = JSON.stringify(data);
+            else if (data.status === 'COMPLETED' && data.result) {
+                // Handle completed async response
+                if (typeof data.result === 'string') resultUrl = data.result;
+                else if (data.result.video_url) resultUrl = data.result.video_url;
+            } else {
+                console.warn('Unexpected response format:', data);
+                throw new Error('Unexpected response format from API');
+            }
 
             setResult(resultUrl);
             setLoading(false);
             await saveToHistory(resultUrl);
 
         } catch (err: any) {
-            setError(err.message);
+            setError(err.message || 'An error occurred');
             setLoading(false);
         }
     };
 
     const pollStatus = async (statusUrl: string) => {
+        let pollCount = 0;
+        const maxPolls = 120; // Maximum 4 minutes for video processing (120 * 2 seconds)
+        
         const pollInterval = setInterval(async () => {
+            pollCount++;
+            
+            if (pollCount > maxPolls) {
+                clearInterval(pollInterval);
+                setError('Request timed out. Video processing may take longer. Please try again.');
+                setLoading(false);
+                return;
+            }
+
             try {
                 const res = await fetch(`/api/poll-image?url=${encodeURIComponent(statusUrl)}`);
                 if (!res.ok) {
                     clearInterval(pollInterval);
-                    throw new Error('Polling failed');
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.error || errData.details || 'Polling failed');
                 }
                 const data = await res.json();
 
-                if (data.status === 'COMPLETED') {
+                if (data.status === 'COMPLETED' || data.status === 'completed') {
                     clearInterval(pollInterval);
 
                     let resultUrl = '';
@@ -115,19 +141,30 @@ export default function VideoEditor() {
                     else if (typeof data.result === 'string') resultUrl = data.result;
                     else if (data.result?.video_url) resultUrl = data.result.video_url;
                     else if (data.video_urls?.[0]) resultUrl = data.video_urls[0];
-                    else resultUrl = JSON.stringify(data);
+                    else if (data.result?.url) resultUrl = data.result.url;
+                    else {
+                        console.warn('Unexpected completed response format:', data);
+                        setError('Completed but could not extract result URL');
+                        setLoading(false);
+                        return;
+                    }
 
                     setResult(resultUrl);
                     setLoading(false);
                     await saveToHistory(resultUrl);
-                } else if (data.status === 'FAILED') {
+                } else if (data.status === 'FAILED' || data.status === 'failed') {
                     clearInterval(pollInterval);
-                    setError('Processing Failed');
+                    setError(data.error || data.message || 'Video processing failed');
                     setLoading(false);
+                } else if (data.status === 'PROCESSING' || data.status === 'processing' || data.status === 'PENDING' || data.status === 'pending') {
+                    // Still processing, continue polling
+                } else {
+                    // Unknown status, log for debugging
+                    console.warn('Unknown status:', data.status, data);
                 }
             } catch (e: any) {
                 clearInterval(pollInterval);
-                setError(e.message);
+                setError(e.message || 'Error while checking status');
                 setLoading(false);
             }
         }, 2000);
@@ -229,60 +266,19 @@ export default function VideoEditor() {
 
                     {/* Remove BG Settings */}
                     {mode === 'remove_bg' && (
-                        <div className="bg-black/20 p-4 rounded-lg border border-white/10 animate-fadeIn space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-2">Background Color</label>
-                                <select
-                                    value={backgroundColor}
-                                    onChange={(e) => setBackgroundColor(e.target.value)}
-                                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-pink-500"
-                                >
-                                    <option value="Transparent">Transparent</option>
-                                    <option value="Black">Black</option>
-                                    <option value="White">White</option>
-                                    <option value="Gray">Gray</option>
-                                    <option value="Red">Red</option>
-                                    <option value="Green">Green</option>
-                                    <option value="Blue">Blue</option>
-                                    <option value="Yellow">Yellow</option>
-                                    <option value="Cyan">Cyan</option>
-                                    <option value="Magenta">Magenta</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-2">Output Format</label>
-                                <select
-                                    value={removeBgCodec}
-                                    onChange={(e) => setRemoveBgCodec(e.target.value)}
-                                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-pink-500"
-                                >
-                                    <option value="webm_vp9">WebM (VP9) - Supports Alpha</option>
-                                    <option value="mov_proresks">MOV (ProRes 4444)</option>
-                                    <option value="mkv_vp9">MKV (VP9)</option>
-                                    <option value="gif">GIF</option>
-                                    <option value="mp4_h264">MP4 (H.264) - No Alpha</option>
-                                    <option value="mp4_h265">MP4 (H.265) - No Alpha</option>
-                                </select>
-                            </div>
+                        <div className="bg-black/20 p-4 rounded-lg border border-white/10 animate-fadeIn">
+                            <p className="text-sm text-gray-400">
+                                Removes the background from the video. The API will automatically handle the output format.
+                            </p>
                         </div>
                     )}
 
                     {/* Foreground Mask Settings */}
                     {mode === 'foreground_mask' && (
                         <div className="bg-black/20 p-4 rounded-lg border border-white/10 animate-fadeIn">
-                            <label className="block text-sm font-medium text-gray-300 mb-2">Output Format</label>
-                            <select
-                                value={foregroundMaskCodec}
-                                onChange={(e) => setForegroundMaskCodec(e.target.value)}
-                                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-pink-500"
-                            >
-                                <option value="mp4_h264">MP4 (H.264)</option>
-                                <option value="mp4_h265">MP4 (H.265)</option>
-                                <option value="webm_vp9">WebM (VP9)</option>
-                                <option value="mov_h265">MOV (H.265)</option>
-                                <option value="mkv_h264">MKV (H.264)</option>
-                                <option value="gif">GIF</option>
-                            </select>
+                            <p className="text-sm text-gray-400">
+                                Generates a foreground mask for the video. The API will automatically handle the output format.
+                            </p>
                         </div>
                     )}
 

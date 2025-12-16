@@ -3,21 +3,22 @@ import { NextResponse } from 'next/server';
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { video, background_color, output_container_and_codec } = body;
+        const { video } = body;
         const apiToken = process.env.BRIA_API_TOKEN;
 
         if (!apiToken) {
             return NextResponse.json({ error: 'BRIA_API_TOKEN not configured' }, { status: 500 });
         }
 
+        if (!video) {
+            return NextResponse.json({ error: 'Video is required' }, { status: 400 });
+        }
+
         const endpoint = 'https://engine.prod.bria-api.com/v2/video/edit/remove_background';
 
-        const payload: any = {
+        const payload = {
             video: video
         };
-
-        if (background_color) payload.background_color = background_color;
-        if (output_container_and_codec) payload.output_container_and_codec = output_container_and_codec;
 
         console.log('Sending payload to Bria (video remove bg):', JSON.stringify({ ...payload, video: payload.video ? payload.video.substring(0, 50) + '...' : 'missing' }));
 
